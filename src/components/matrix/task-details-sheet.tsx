@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, type KeyboardEvent } from "react";
+import { useState, useEffect, useRef, type KeyboardEvent } from "react";
 import { CalendarIcon, X } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -16,7 +16,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { SubtaskList } from "./subtask-list";
 import type { Task } from "@/types";
 
 export function TaskDetailsSheet({
@@ -47,6 +49,16 @@ export function TaskDetailsSheet({
   const [tagInput, setTagInput] = useState("");
   const tagInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setTitle(task.title);
+      setDescription(task.description ?? "");
+      setDueDate(task.dueDate ? new Date(task.dueDate) : undefined);
+      setTags(task.tags ?? []);
+      setTagInput("");
+    }
+  }, [task.id, open]);
 
   function handleAddTag(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key !== "Enter") return;
@@ -101,6 +113,10 @@ export function TaskDetailsSheet({
               rows={4}
             />
           </div>
+
+          <Separator />
+          <SubtaskList taskId={task.id} />
+          <Separator />
 
           <div className="space-y-2">
             <Label>Due date</Label>

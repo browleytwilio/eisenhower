@@ -5,9 +5,11 @@ import { useEffect } from "react";
 export function useKeyboardShortcuts({
   onQuickAdd,
   onSearch,
+  onToggleSelect,
 }: {
   onQuickAdd: () => void;
   onSearch: () => void;
+  onToggleSelect?: () => void;
 }) {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -25,6 +27,12 @@ export function useKeyboardShortcuts({
 
       if (isInput) return;
 
+      if (e.key === "S" && e.shiftKey && onToggleSelect) {
+        e.preventDefault();
+        onToggleSelect();
+        return;
+      }
+
       if (e.key === "n") {
         e.preventDefault();
         onQuickAdd();
@@ -34,5 +42,5 @@ export function useKeyboardShortcuts({
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onQuickAdd, onSearch]);
+  }, [onQuickAdd, onSearch, onToggleSelect]);
 }

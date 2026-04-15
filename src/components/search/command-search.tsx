@@ -1,7 +1,5 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Search } from "lucide-react";
 import {
   CommandDialog,
   CommandEmpty,
@@ -10,7 +8,6 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { Badge } from "@/components/ui/badge";
 import { QUADRANTS, QUADRANT_ORDER } from "@/lib/constants";
 import type { Quadrant, Task } from "@/types";
 

@@ -16,11 +16,12 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { Archive } from "lucide-react";
+import { Archive, CheckSquare, Trash2, ArrowRight, X } from "lucide-react";
 import { QuadrantColumn } from "./quadrant";
 import { TaskCard } from "./task-card";
 import { QuickAddBar } from "./quick-add-bar";
 import { StatsBar } from "./stats-bar";
+import { OnboardingPrompt } from "./onboarding-prompt";
 import { CommandSearch } from "@/components/search/command-search";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { TaskDetailsSheet } from "./task-details-sheet";
@@ -38,6 +39,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   createTask,
   updateTask,
   deleteTask,
@@ -45,7 +52,8 @@ import {
   reorderTasks,
   archiveCompletedTasks,
 } from "@/actions/task-actions";
-import { QUADRANT_ORDER } from "@/lib/constants";
+import { bulkComplete, bulkDelete, bulkMove } from "@/actions/bulk-actions";
+import { QUADRANT_ORDER, QUADRANTS } from "@/lib/constants";
 import type { Quadrant, Task } from "@/types";
 
 type OptimisticAction =
@@ -129,11 +137,19 @@ export function MatrixBoard({
   const [searchOpen, setSearchOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const quickAddRef = useRef<HTMLInputElement>(null);
 
   useKeyboardShortcuts({
     onQuickAdd: () => quickAddRef.current?.focus(),
     onSearch: () => setSearchOpen(true),
+    onToggleSelect: () => {
+      setSelectionMode((prev) => {
+        if (prev) setSelectedIds(new Set());
+        return !prev;
+      });
+    },
   });
 
   const sensors = useSensors(
@@ -150,6 +166,11 @@ export function MatrixBoard({
         undefined
       )
     : undefined;
+
+  const totalTasks = QUADRANT_ORDER.reduce(
+    (sum, q) => sum + optimistic[q].length,
+    0
+  );
 
   const completedCount = QUADRANT_ORDER.reduce(
     (sum, q) => sum + optimistic[q].filter((t) => t.completed).length,
@@ -217,7 +238,11 @@ export function MatrixBoard({
   );
 
   const handleCreate = useCallback(
-    async (title: string, quadrant: Quadrant) => {
+    async (
+      title: string,
+      quadrant: Quadrant,
+      extra?: { dueDate?: string; tags?: string[] }
+    ) => {
       const tempId = `temp-${Date.now()}`;
       const tempTask: Task = {
         id: tempId,
@@ -226,8 +251,8 @@ export function MatrixBoard({
         description: null,
         quadrant,
         position: optimistic[quadrant].length,
-        dueDate: null,
-        tags: null,
+        dueDate: extra?.dueDate ?? null,
+        tags: extra?.tags ?? null,
         completed: false,
         completedAt: null,
         archived: false,
@@ -235,7 +260,12 @@ export function MatrixBoard({
         updatedAt: new Date().toISOString(),
       };
       addOptimistic({ type: "add", task: tempTask });
-      const result = await createTask({ title, quadrant });
+      const result = await createTask({
+        title,
+        quadrant,
+        dueDate: extra?.dueDate,
+        tags: extra?.tags,
+      });
       if (!result.success) toast.error(result.error);
     },
     [optimistic, addOptimistic]
@@ -275,6 +305,69 @@ export function MatrixBoard({
     [addOptimistic]
   );
 
+  const handleToggleSelection = useCallback(
+    (taskId: string) => {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(taskId)) next.delete(taskId);
+        else next.add(taskId);
+        return next;
+      });
+    },
+    []
+  );
+
+  const handleBulkComplete = useCallback(async () => {
+    const ids = Array.from(selectedIds);
+    const result = await bulkComplete(ids);
+    if (result.success) {
+      toast.success(`Completed ${result.data.count} task${result.data.count === 1 ? "" : "s"}`);
+    } else {
+      toast.error(result.error);
+    }
+    setSelectedIds(new Set());
+    setSelectionMode(false);
+  }, [selectedIds]);
+
+  const handleBulkDelete = useCallback(async () => {
+    const ids = Array.from(selectedIds);
+    const result = await bulkDelete(ids);
+    if (result.success) {
+      toast.success(`Deleted ${result.data.count} task${result.data.count === 1 ? "" : "s"}`);
+    } else {
+      toast.error(result.error);
+    }
+    setSelectedIds(new Set());
+    setSelectionMode(false);
+  }, [selectedIds]);
+
+  const handleBulkMove = useCallback(
+    async (quadrant: Quadrant) => {
+      const ids = Array.from(selectedIds);
+      const result = await bulkMove(ids, quadrant);
+      if (result.success) {
+        toast.success(`Moved ${result.data.count} task${result.data.count === 1 ? "" : "s"}`);
+      } else {
+        toast.error(result.error);
+      }
+      setSelectedIds(new Set());
+      setSelectionMode(false);
+    },
+    [selectedIds]
+  );
+
+  const handleCreateSamples = useCallback(async () => {
+    const samples: { title: string; quadrant: Quadrant }[] = [
+      { title: "Finish urgent report", quadrant: "do_first" },
+      { title: "Plan next week's goals", quadrant: "schedule" },
+      { title: "Reply to routine emails", quadrant: "delegate" },
+      { title: "Reorganize old bookmarks", quadrant: "eliminate" },
+    ];
+    for (const s of samples) {
+      await handleCreate(s.title, s.quadrant);
+    }
+  }, [handleCreate]);
+
   const handleArchiveCompleted = useCallback(async () => {
     setArchiveDialogOpen(false);
     const result = await archiveCompletedTasks();
@@ -313,18 +406,30 @@ export function MatrixBoard({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5">
-          {QUADRANT_ORDER.map((quadrant) => (
-            <QuadrantColumn
-              key={quadrant}
-              quadrant={quadrant}
-              tasks={optimistic[quadrant]}
-              onComplete={handleComplete}
-              onDelete={handleDelete}
-              onUpdate={handleUpdate}
+        {totalTasks === 0 ? (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5">
+            <OnboardingPrompt
+              onFocusInput={() => quickAddRef.current?.focus()}
+              onCreateSamples={handleCreateSamples}
             />
-          ))}
-        </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5">
+            {QUADRANT_ORDER.map((quadrant) => (
+              <QuadrantColumn
+                key={quadrant}
+                quadrant={quadrant}
+                tasks={optimistic[quadrant]}
+                onComplete={handleComplete}
+                onDelete={handleDelete}
+                onUpdate={handleUpdate}
+                selectionMode={selectionMode}
+                selectedIds={selectedIds}
+                onToggleSelection={handleToggleSelection}
+              />
+            ))}
+          </div>
+        )}
         <DragOverlay dropAnimation={{ duration: 200, easing: "ease" }}>
           {activeTask ? (
             <motion.div
@@ -379,6 +484,66 @@ export function MatrixBoard({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {selectionMode && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-lg border bg-card px-4 py-2 shadow-lg">
+          <Badge variant="secondary" className="text-xs">
+            {selectedIds.size} selected
+          </Badge>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            disabled={selectedIds.size === 0}
+            onClick={handleBulkComplete}
+          >
+            <CheckSquare className="h-3.5 w-3.5" />
+            Complete
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  disabled={selectedIds.size === 0}
+                />
+              }
+            >
+              <ArrowRight className="h-3.5 w-3.5" />
+              Move to...
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              {QUADRANT_ORDER.map((q) => (
+                <DropdownMenuItem key={q} onClick={() => handleBulkMove(q)}>
+                  {QUADRANTS[q].label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 text-destructive hover:text-destructive"
+            disabled={selectedIds.size === 0}
+            onClick={handleBulkDelete}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Delete
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-1"
+            onClick={() => {
+              setSelectionMode(false);
+              setSelectedIds(new Set());
+            }}
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

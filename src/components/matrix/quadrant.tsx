@@ -19,6 +19,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { TaskCard } from "./task-card";
 import { EmptyQuadrant } from "./empty-quadrant";
 import { QUADRANTS } from "@/lib/constants";
+import type { ActionResult } from "@/lib/validations";
 import type { Quadrant, Task } from "@/types";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -34,11 +35,14 @@ export function QuadrantColumn({
   onComplete,
   onDelete,
   onUpdate,
+  selectionMode = false,
+  selectedIds,
+  onToggleSelection,
 }: {
   quadrant: Quadrant;
   tasks: Task[];
   onComplete: (taskId: string) => void;
-  onDelete: (taskId: string) => Promise<unknown>;
+  onDelete: (taskId: string) => Promise<ActionResult<Task> | undefined>;
   onUpdate: (
     taskId: string,
     data: {
@@ -48,6 +52,9 @@ export function QuadrantColumn({
       tags?: string[] | null;
     }
   ) => Promise<void>;
+  selectionMode?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelection?: (taskId: string) => void;
 }) {
   const meta = QUADRANTS[quadrant];
   const Icon = ICONS[meta.icon];
@@ -112,6 +119,9 @@ export function QuadrantColumn({
                         onComplete={onComplete}
                         onDelete={onDelete}
                         onUpdate={onUpdate}
+                        selectionMode={selectionMode}
+                        selected={selectedIds?.has(task.id) ?? false}
+                        onToggleSelection={onToggleSelection}
                       />
                     </motion.div>
                   ))}

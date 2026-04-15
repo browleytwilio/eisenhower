@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { Sun, Moon, Monitor, Archive, LogOut, KeyRound, Trash2 } from "lucide-react";
+import { Sun, Moon, Monitor, Archive, LogOut, KeyRound, Trash2, Download } from "lucide-react";
 import { toast } from "sonner";
 import { signOut, changePassword, deleteUser } from "@/lib/auth-client";
 import { archiveCompletedTasks } from "@/actions/task-actions";
@@ -34,6 +34,7 @@ import {
 const shortcuts = [
   { keys: ["N"], description: "Quick-add a new task" },
   { keys: ["\u2318", "K"], description: "Open command search" },
+  { keys: ["Shift", "S"], description: "Toggle selection mode" },
   { keys: ["Double-click"], description: "Inline-edit task title" },
 ];
 
@@ -121,7 +122,32 @@ export function SettingsContent({
           <CardTitle className="text-base">Data</CardTitle>
           <CardDescription>Manage your tasks and data.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => {
+                window.location.href = "/api/export?format=csv";
+              }}
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export CSV
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => {
+                window.location.href = "/api/export?format=json";
+              }}
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export JSON
+            </Button>
+          </div>
+          <Separator />
           <AlertDialog>
             <AlertDialogTrigger
               render={

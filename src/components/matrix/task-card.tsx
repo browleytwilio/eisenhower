@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, MoreHorizontal, Pencil, Trash2, Calendar } from "lucide-react";
+import { GripVertical, MoreHorizontal, Pencil, Trash2, Calendar, ListChecks } from "lucide-react";
 import confetti from "canvas-confetti";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { restoreTask } from "@/actions/task-actions";
+import type { ActionResult } from "@/lib/validations";
+import { Checkbox } from "@/components/ui/checkbox";
 import { AnimatedCheckbox } from "./animated-checkbox";
 import { TaskDetailsSheet } from "./task-details-sheet";
 import type { Task } from "@/types";
@@ -49,10 +51,13 @@ export function TaskCard({
   onDelete,
   onUpdate,
   isOverlay = false,
+  selectionMode = false,
+  selected = false,
+  onToggleSelection,
 }: {
   task: Task;
   onComplete: (taskId: string) => void;
-  onDelete: (taskId: string) => Promise<unknown>;
+  onDelete: (taskId: string) => Promise<ActionResult<Task> | undefined>;
   onUpdate: (
     taskId: string,
     data: {
@@ -63,6 +68,9 @@ export function TaskCard({
     }
   ) => Promise<void>;
   isOverlay?: boolean;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelection?: (taskId: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(task.title);
@@ -104,9 +112,9 @@ export function TaskCard({
   }, [editValue, task.id, task.title, onUpdate]);
 
   const handleDelete = useCallback(async () => {
-    const deleted = await onDelete(task.id);
-    if (deleted) {
-      const d = deleted as Task;
+    const result = await onDelete(task.id);
+    if (result?.success) {
+      const d = result.data;
       toast("Task deleted", {
         action: {
           label: "Undo",
@@ -140,14 +148,24 @@ export function TaskCard({
           isOverlay ? "shadow-lg border-border" : ""
         }`}
       >
-        <button
-          className="mt-0.5 cursor-grab touch-none opacity-60 transition-opacity md:opacity-0 md:group-hover:opacity-60 md:focus:opacity-60"
-          aria-label="Drag to reorder"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="h-4 w-4 text-muted-foreground" />
-        </button>
+        {selectionMode ? (
+          <div className="mt-0.5 shrink-0" onPointerDown={(e) => e.stopPropagation()}>
+            <Checkbox
+              checked={selected}
+              onCheckedChange={() => onToggleSelection?.(task.id)}
+              aria-label={`Select "${task.title}"`}
+            />
+          </div>
+        ) : (
+          <button
+            className="mt-0.5 cursor-grab touch-none opacity-60 transition-opacity md:opacity-0 md:group-hover:opacity-60 md:focus:opacity-60"
+            aria-label="Drag to reorder"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="h-4 w-4 text-muted-foreground" />
+          </button>
+        )}
 
         <div ref={checkboxRef} className="mt-0.5 shrink-0">
           <AnimatedCheckbox
@@ -200,7 +218,7 @@ export function TaskCard({
               )}
             </span>
           )}
-          {(dueBadge || (task.tags && task.tags.length > 0)) && (
+          {(dueBadge || (task.tags && task.tags.length > 0) || (task.subtaskCount && task.subtaskCount > 0)) && (
             <div className="mt-0.5 flex flex-wrap items-center gap-1">
               {dueBadge && (
                 <>
@@ -209,6 +227,15 @@ export function TaskCard({
                     {dueBadge.label}
                   </Badge>
                 </>
+              )}
+              {!!task.subtaskCount && task.subtaskCount > 0 && (
+                <Badge
+                  variant={task.subtaskDoneCount === task.subtaskCount ? "secondary" : "outline"}
+                  className="text-[10px] px-1 py-0 h-4 gap-0.5"
+                >
+                  <ListChecks className="h-3 w-3" />
+                  {task.subtaskDoneCount}/{task.subtaskCount}
+                </Badge>
               )}
               {task.tags?.map((tag) => (
                 <Badge

@@ -99,3 +99,20 @@ export const tasks = pgTable(
     index("tasks_user_archived_idx").on(table.userId, table.archived),
   ]
 );
+
+export const subtasks = pgTable(
+  "subtasks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    title: varchar("title", { length: 500 }).notNull(),
+    completed: boolean("completed").notNull().default(false),
+    position: integer("position").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("subtasks_task_position_idx").on(table.taskId, table.position),
+  ]
+);

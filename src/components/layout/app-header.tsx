@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LayoutGrid, Archive, Settings, LogOut } from "lucide-react";
+import { LayoutGrid, Archive, Settings, LogOut, BarChart3 } from "lucide-react";
 import { signOut } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,6 +52,13 @@ export function AppHeader({ userName }: { userName: string }) {
                 <p className="text-sm font-medium">{userName}</p>
               </div>
               <DropdownMenuSeparator />
+              <DropdownMenuItem
+                render={<Link href="/analytics" />}
+                className="cursor-pointer"
+              >
+                <BarChart3 className="mr-2 h-4 w-4" />
+                Analytics
+              </DropdownMenuItem>
               <DropdownMenuItem
                 render={<Link href="/archive" />}
                 className="cursor-pointer"

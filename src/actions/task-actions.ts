@@ -2,7 +2,7 @@
 
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { eq, and, sql, gt, lt, gte, lte, max, desc } from "drizzle-orm";
+import { eq, and, or, sql, gt, lt, gte, lte, max, desc, isNull } from "drizzle-orm";
 import { getAuth } from "@/lib/auth";
 import { getDb } from "@/db";
 import { tasks } from "@/db/schema";
@@ -47,6 +47,7 @@ export async function createTask(data: {
   quadrant: string;
   description?: string;
   dueDate?: string;
+  tags?: string[];
 }): Promise<ActionResult<Task>> {
   try {
     const parsed = createTaskSchema.safeParse(data);
@@ -79,6 +80,7 @@ export async function createTask(data: {
         position,
         description: parsed.data.description ?? null,
         dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : null,
+        tags: parsed.data.tags ?? null,
       })
       .returning();
 
@@ -189,7 +191,7 @@ export async function completeTask(taskId: string): Promise<ActionResult> {
         completedAt: task.completed ? null : new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(tasks.id, taskId));
+      .where(and(eq(tasks.id, taskId), eq(tasks.userId, session.user.id)));
 
     revalidatePath("/matrix");
     return { success: true, data: undefined };
@@ -328,7 +330,7 @@ export async function reorderTasks(data: {
       await db
         .update(tasks)
         .set({ position: newPos, updatedAt: new Date() })
-        .where(eq(tasks.id, parsed.data.taskId));
+        .where(and(eq(tasks.id, parsed.data.taskId), eq(tasks.userId, session.user.id)));
     } else {
       await db
         .update(tasks)
@@ -361,7 +363,7 @@ export async function reorderTasks(data: {
           position: parsed.data.newPosition,
           updatedAt: new Date(),
         })
-        .where(eq(tasks.id, parsed.data.taskId));
+        .where(and(eq(tasks.id, parsed.data.taskId), eq(tasks.userId, session.user.id)));
     }
 
     revalidatePath("/matrix");
@@ -372,32 +374,52 @@ export async function reorderTasks(data: {
 }
 
 export async function getArchivedTasks(cursor?: string, limit = 20) {
-  const session = await getSession();
-  const db = getDb();
+  try {
+    const session = await getSession();
+    const db = getDb();
 
-  const conditions = [
-    eq(tasks.userId, session.user.id),
-    eq(tasks.archived, true),
-  ];
+    const conditions = [
+      eq(tasks.userId, session.user.id),
+      eq(tasks.archived, true),
+    ];
 
-  if (cursor) {
-    conditions.push(lt(tasks.completedAt, new Date(cursor)));
+    if (cursor) {
+      const separatorIdx = cursor.indexOf("|");
+      const cursorDate = cursor.slice(0, separatorIdx);
+      const cursorId = cursor.slice(separatorIdx + 1);
+
+      if (cursorDate === "null") {
+        conditions.push(and(isNull(tasks.completedAt), lt(tasks.id, cursorId))!);
+      } else {
+        conditions.push(
+          or(
+            lt(tasks.completedAt, new Date(cursorDate)),
+            and(eq(tasks.completedAt, new Date(cursorDate)), lt(tasks.id, cursorId))!,
+            and(isNull(tasks.completedAt), lt(tasks.id, cursorId))!
+          )!
+        );
+      }
+    }
+
+    const rows = await db
+      .select()
+      .from(tasks)
+      .where(and(...conditions))
+      .orderBy(sql`${tasks.completedAt} desc nulls last`, desc(tasks.id))
+      .limit(limit + 1);
+
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+    const lastItem = items[items.length - 1];
+    const nextCursor = hasMore && lastItem
+      ? `${lastItem.completedAt?.toISOString() ?? "null"}|${lastItem.id}`
+      : null;
+
+    return { tasks: items, nextCursor };
+  } catch (e) {
+    console.error("Failed to load archived tasks:", e);
+    return { tasks: [], nextCursor: null };
   }
-
-  const rows = await db
-    .select()
-    .from(tasks)
-    .where(and(...conditions))
-    .orderBy(desc(tasks.completedAt))
-    .limit(limit + 1);
-
-  const hasMore = rows.length > limit;
-  const items = hasMore ? rows.slice(0, limit) : rows;
-  const nextCursor = hasMore && items[items.length - 1].completedAt
-    ? items[items.length - 1].completedAt!.toISOString()
-    : null;
-
-  return { tasks: items, nextCursor };
 }
 
 export async function restoreArchivedTask(taskId: string): Promise<ActionResult> {
@@ -413,7 +435,7 @@ export async function restoreArchivedTask(taskId: string): Promise<ActionResult>
       .from(tasks)
       .where(and(eq(tasks.id, taskId), eq(tasks.userId, session.user.id)));
 
-    if (!task) return { success: false, error: "Task not found" };
+    if (!task || !task.archived) return { success: false, error: "Task not found" };
 
     const [maxPos] = await db
       .select({ maxPosition: max(tasks.position) })
@@ -437,7 +459,7 @@ export async function restoreArchivedTask(taskId: string): Promise<ActionResult>
         position,
         updatedAt: new Date(),
       })
-      .where(eq(tasks.id, taskId));
+      .where(and(eq(tasks.id, taskId), eq(tasks.userId, session.user.id)));
 
     revalidatePath("/matrix");
     revalidatePath("/archive");
