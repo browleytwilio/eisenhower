@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import { connection } from "next/server";
 import { AppHeader } from "@/components/layout/app-header";
 import { ArchiveList } from "./archive-list";
 import { getAuth } from "@/lib/auth";
@@ -10,6 +11,7 @@ export default async function ArchivePage({
 }: {
   searchParams: Promise<{ cursor?: string }>;
 }) {
+  await connection();
   const session = await getAuth().api.getSession({
     headers: await headers(),
   });
